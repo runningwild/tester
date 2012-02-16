@@ -1,0 +1,11 @@
+go build .
+
+rm -rf tester.app
+mkdir -p tester.app/Contents/MacOS
+mkdir -p tester.app/Contents/lib
+mv tester tester.app/Contents/MacOS/tester
+
+# This line should copy libglop.so from wherever it gets build to this location
+cp ../../github.com/runningwild/glop/gos/darwin/lib/libglop.so tester.app/Contents/lib/
+cp -r data/* tester.app/Contents
+
