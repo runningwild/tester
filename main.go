@@ -123,7 +123,7 @@ func main() {
   render.Queue(func() {
     sys.CreateWindow(50, 150, wdx, wdy)
     sys.EnableVSync(true)
-    ui,_ = gui.Make(gin.In(), gui.Dims{ wdx, wdy }, filepath.Join(datadir, "fonts", "skia.ttf"))
+    ui,_ = gui.Make(gin.In(), gui.Dims{ wdx, wdy }, filepath.Join(datadir, "fonts", "luxisr.ttf"))
   })
   render.Purge()
 
@@ -202,9 +202,13 @@ func main() {
       current_state.SetText(sprite_box.s.AnimState())
     }
     render.Queue(func() {
-      gl.ClearColor(0, 0, 0, 1)
+      gl.ClearColor(1, 0, 0, 1)
       gl.Clear(gl.COLOR_BUFFER_BIT)
       ui.Draw()
+      gl.Color4d(1,0,0,1)
+      for i := 0; i < 100; i++ {
+        gui.GetDict("standard").RenderString("Ty, Tr !!!!", 10,100,400,200,0)
+      }
       sys.SwapBuffers()
     })
 
