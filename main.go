@@ -194,7 +194,16 @@ func (h *handler) HandleEventGroup(group gin.EventGroup) {
 func (h *handler) Think(int64) {}
 
 func main() {
-  gl21.Init()
+  err := gl21.Init()
+  if err != nil {
+    f, err2 := os.Create(filepath.Join(datadir, "gl_log.txt"))
+    if err2 != nil {
+      fmt.Printf("Unable to write log to a file:%v\n%v\v", err, err2)
+    } else {
+      fmt.Fprintf(f, "%v\n", err)
+      f.Close()
+    }
+  }
   sys = system.Make(gos.GetSystemInterface())
   sys.Startup()
   wdx := 1000
