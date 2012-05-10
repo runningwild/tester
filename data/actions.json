@@ -1,14 +1,28 @@
 {
-  "turn_left"  : "o",
-  "turn_right" : "p",
-  "defend"     : "d",
-  "damaged"    : "g",
-  "undamaged"  : "f",
-  "killed"     : "k",
-  "ranged"     : "r",
-  "melee"      : "m",
-  "move"       : "w",
-  "stop"       : "s",
-  "summon"     : "n",
-  "reset"      : "gui+r"
+  "Ranged/Miss": {
+    "Cmd": "r",
+    "Me": ["ranged"],
+    "You": ["defend", "undamaged"],
+    "Sync": "hit"
+  },
+  "Ranged/Dmg": {
+    "Cmd": "shift+r",
+    "Me": ["ranged"],
+    "You": ["defend", "damaged"],
+    "Sync": "hit"
+  },
+  "Ranged/Kill": {
+    "Cmd": "shift+alt+r",
+    "Me": ["ranged"],
+    "You": ["defend", "killed"],
+    "Sync": "hit"
+  },
+  "Right": {
+    "Cmd": "o",
+    "Me": ["turn_right"]
+  },
+  "Left": {
+    "Cmd": "p",
+    "Me": ["turn_left"]
+  }
 }

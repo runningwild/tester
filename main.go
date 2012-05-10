@@ -2,32 +2,44 @@ package main
 
 import (
   "fmt"
-  "time"
-  "runtime"
-  "path/filepath"
-  "os"
-  "sort"
-  "github.com/runningwild/opengl/gl"
-  "github.com/runningwild/glop/gos"
+  "github.com/chsc/gogl/gl21"
   "github.com/runningwild/glop/gin"
+  "github.com/runningwild/glop/gos"
   "github.com/runningwild/glop/gui"
-  "github.com/runningwild/glop/system"
-  "github.com/runningwild/glop/sprite"
   "github.com/runningwild/glop/render"
+  "github.com/runningwild/glop/sprite"
+  "github.com/runningwild/glop/system"
+  "github.com/runningwild/opengl/gl"
+  "os"
+  "path/filepath"
+  "runtime"
+  "runtime/pprof"
+  "sort"
+  "time"
 )
 
 type loadResult struct {
   anim *sprite.Sprite
-  err error
+  err  error
 }
 
 var (
-  sys system.System
-  datadir string
-  key_map KeyMap
+  sys        system.System
+  datadir    string
+  key_map    KeyMap
   action_map KeyMap
-  loaded chan loadResult
+  loaded     chan loadResult
+  dict       *gui.Dictionary
+  error_msg  *gui.TextLine
+  commands   map[string]Command
 )
+
+type Command struct {
+  Cmd  string
+  Me   []string
+  You  []string
+  Sync string
+}
 
 func init() {
   runtime.LockOSThread()
@@ -35,8 +47,11 @@ func init() {
   var key_binds KeyBinds
   LoadJson(filepath.Join(datadir, "bindings.json"), &key_binds)
   key_map = key_binds.MakeKeyMap()
-  key_binds = nil
-  LoadJson(filepath.Join(datadir, "actions.json"), &key_binds)
+  key_binds = make(map[string]string)
+  LoadJson(filepath.Join(datadir, "actions.json"), &commands)
+  for name, cmd := range commands {
+    key_binds[name] = cmd.Cmd
+  }
   action_map = key_binds.MakeKeyMap()
   loaded = make(chan loadResult)
 }
@@ -51,7 +66,7 @@ func GetStoreVal(key string) string {
   return val
 }
 
-func SetStoreVal(key,val string) {
+func SetStoreVal(key, val string) {
   var store map[string]string
   path := filepath.Join(datadir, "store")
   LoadJson(path, &store)
@@ -69,51 +84,112 @@ type spriteBox struct {
   gui.NonResponder
   gui.NonFocuser
   gui.Childless
-  s *sprite.Sprite
+  s       *sprite.Sprite
+  r, g, b float64
 }
+
 func makeSpriteBox(s *sprite.Sprite) *spriteBox {
   var sb spriteBox
-  sb.EmbeddedWidget = &gui.BasicWidget{ CoreWidget: &sb }
-  sb.Request_dims = gui.Dims{ 300, 300 }
+  sb.EmbeddedWidget = &gui.BasicWidget{CoreWidget: &sb}
+  sb.Request_dims = gui.Dims{300, 300}
+  sb.r, sb.g, sb.b = 0.2, 0.1, 0.4
   return &sb
 }
 func (sb *spriteBox) String() string {
   return "sprite box"
 }
 func (sb *spriteBox) Draw(region gui.Region) {
+  gl.Disable(gl.TEXTURE_2D)
+  gl.Color4d(sb.r, sb.g, sb.b, 1)
+  gl.Begin(gl.QUADS)
+  gl.Vertex2i(region.X, region.Y)
+  gl.Vertex2i(region.X, region.Y+region.Dy)
+  gl.Vertex2i(region.X+region.Dx, region.Y+region.Dy)
+  gl.Vertex2i(region.X+region.Dx, region.Y)
+  gl.End()
   if sb.s != nil {
-    gl.Disable(gl.TEXTURE_2D)
-    gl.Color4f(0.2, 0.1, 0.9, 1)
-    gl.Begin(gl.QUADS)
-    gl.Vertex2i(region.X, region.Y)
-    gl.Vertex2i(region.X, region.Y + region.Dy)
-    gl.Vertex2i(region.X + region.Dx, region.Y + region.Dy)
-    gl.Vertex2i(region.X + region.Dx, region.Y)
-    gl.End()
     gl.Enable(gl.TEXTURE_2D)
-    tx,ty,tx2,ty2 := sb.s.Bind()
+    tx, ty, tx2, ty2 := sb.s.Bind()
     // fmt.Printf("Tex: %f %f %f %f\n", tx, ty, tx2, ty2)
-gl.Enable(gl.BLEND)
-gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+    gl.Enable(gl.BLEND)
+    gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
     gl.Color4f(1, 1, 1, 1)
     gl.Begin(gl.QUADS)
-    x := region.X + region.Dx / 2
-    y := region.Y + region.Dy / 2
+    x := region.X + region.Dx/2
+    y := region.Y + region.Dy/2
     gl.TexCoord2d(tx, -ty)
-    gl.Vertex2i(x - 50, y - 75)
+    gl.Vertex2i(x-50, y-75)
     gl.TexCoord2d(tx, -ty2)
-    gl.Vertex2i(x - 50, y + 75)
+    gl.Vertex2i(x-50, y+75)
     gl.TexCoord2d(tx2, -ty2)
-    gl.Vertex2i(x + 50, y + 75)
+    gl.Vertex2i(x+50, y+75)
     gl.TexCoord2d(tx2, -ty)
-    gl.Vertex2i(x + 50, y - 75)
+    gl.Vertex2i(x+50, y-75)
     gl.End()
-    // sb.s.Render(float32(region.X + region.Dx / 2), float32(region.Y), 0, 1)
+    gl.Color4d(1, 1, 1, 1)
+    text := fmt.Sprintf("%d : %s : %s", sb.s.Facing(), sb.s.Anim(), sb.s.AnimState())
+    dict.RenderString(text, float64(region.X), float64(region.Y), 0, dict.MaxHeight(), gui.Left)
   }
 }
 
+type boxdata struct {
+  sb   *spriteBox
+  name string
+  dir  string
+}
+
+func (b *boxdata) load(dir string) {
+  go func() {
+    anim, err := sprite.LoadSprite(dir)
+    if err != nil {
+      error_msg.SetText(err.Error())
+    } else {
+      b.sb.s = anim
+      SetStoreVal(b.name, b.dir)
+    }
+  }()
+
+  // This is outside of the goroutine because otherwise it might never become
+  // visible since we never sync up with it.
+  b.dir = dir
+}
+
+type handler struct {
+  box1, box2 *boxdata
+}
+
+func (h *handler) HandleEventGroup(group gin.EventGroup) {
+  if group.Events[0].Type != gin.Press {
+    return
+  }
+  if h.box1 == nil || h.box1.sb == nil || h.box1.sb.s == nil {
+    return
+  }
+  for name, key := range action_map {
+    if group.Events[0].Key.Id() == key.Id() {
+      cmd := commands[name]
+      if len(cmd.You) > 0 {
+        if h.box2 == nil || h.box2.sb == nil || h.box2.sb.s == nil {
+          return
+        }
+        sprite.CommandSync(
+          []*sprite.Sprite{h.box1.sb.s, h.box2.sb.s},
+          [][]string{cmd.Me, cmd.You},
+          cmd.Sync)
+      } else {
+        h.box1.sb.s.CommandN(cmd.Me)
+      }
+    }
+  }
+  for i := range group.Events {
+    fmt.Printf("%v ", group.Events[i])
+  }
+  fmt.Printf("\n")
+}
+func (h *handler) Think(int64) {}
 
 func main() {
+  gl21.Init()
   sys = system.Make(gos.GetSystemInterface())
   sys.Startup()
   wdx := 1000
@@ -123,25 +199,27 @@ func main() {
   render.Queue(func() {
     sys.CreateWindow(50, 150, wdx, wdy)
     sys.EnableVSync(true)
-    ui,_ = gui.Make(gin.In(), gui.Dims{ wdx, wdy }, filepath.Join(datadir, "fonts", "luxisr.ttf"))
+    ui, _ = gui.Make(gin.In(), gui.Dims{wdx, wdy}, filepath.Join(datadir, "fonts", "luxisr.ttf"))
+    dict = gui.GetDict("standard")
   })
   render.Purge()
 
-  anchor := gui.MakeAnchorBox(gui.Dims{ wdx, wdy })
+  anchor := gui.MakeAnchorBox(gui.Dims{wdx, wdy})
   ui.AddChild(anchor)
-
+  var event_handler handler
+  gin.In().RegisterEventListener(&event_handler)
   actions_list := gui.MakeVerticalTable()
   keyname_list := gui.MakeVerticalTable()
   both_lists := gui.MakeHorizontalTable()
   both_lists.AddChild(actions_list)
   both_lists.AddChild(keyname_list)
-  anchor.AddChild(both_lists, gui.Anchor{ 1,0.5, 1,0.5 })
+  anchor.AddChild(both_lists, gui.Anchor{1, 0.5, 1, 0.5})
   var actions []string
   for action := range action_map {
     actions = append(actions, action)
   }
   sort.Strings(actions)
-  for _,action := range actions {
+  for _, action := range actions {
     actions_list.AddChild(gui.MakeTextLine("standard", action, 150, 1, 1, 1, 1))
     keyname_list.AddChild(gui.MakeTextLine("standard", action_map[action].Name(), 50, 1, 1, 1, 1))
   }
@@ -151,36 +229,53 @@ func main() {
   frame_data := gui.MakeVerticalTable()
   frame_data.AddChild(current_anim)
   frame_data.AddChild(current_state)
-  anchor.AddChild(frame_data, gui.Anchor{ 0,1, 0,1 })
+  anchor.AddChild(frame_data, gui.Anchor{0, 1, 0, 1})
 
   speed := 100
   speed_text := gui.MakeTextLine("standard", "Speed: 100%", 150, 1, 1, 1, 1)
-  anchor.AddChild(speed_text, gui.Anchor{ 0,0, 0,0 })
+  anchor.AddChild(speed_text, gui.Anchor{0, 0, 0, 0})
 
-  sprite_box := makeSpriteBox(nil)
-  anchor.AddChild(sprite_box, gui.Anchor{ 0.5,0.5, 0.25, 0.5 })
+  var box1, box2 boxdata
 
-  error_msg := gui.MakeTextLine("standard", "", wdx, 1, 0.5, 0.5, 1)
-  anchor.AddChild(error_msg, gui.Anchor{ 0,0, 0,0.1})
+  box1.name = "box1"
+  box1.sb = makeSpriteBox(nil)
+  anchor.AddChild(box1.sb, gui.Anchor{0.5, 0.5, 0.15, 0.5})
+  box1.load(GetStoreVal("box1"))
+  box := box1
+
+  box2.name = "box2"
+  box2.sb = makeSpriteBox(nil)
+  anchor.AddChild(box2.sb, gui.Anchor{0.5, 0.5, 0.5, 0.5})
+  box2.load(GetStoreVal("box2"))
+  box_other := box2
+
+  box2.sb.r, box2.sb.g, box2.sb.b = 0.2, 0.1, 0.4
+  box1.sb.r, box1.sb.g, box1.sb.b = 0.4, 0.2, 0.8
+
+  error_msg = gui.MakeTextLine("standard", "", wdx, 1, 0.5, 0.5, 1)
+  anchor.AddChild(error_msg, gui.Anchor{0, 0, 0, 0.1})
 
   var chooser gui.Widget
-  curdir := GetStoreVal("curdir")
-  if curdir == "" {
-    curdir = "."
-  } else {
-    _,err := os.Stat(filepath.Join(datadir, curdir))
-    if err == nil {
-      go func() {
-        anim, err := sprite.LoadSprite(filepath.Join(datadir, curdir))
-        loaded <- loadResult{ anim, err } 
-      } ()
-    } else {
-      curdir = "."
-    }
-  }
+  // curdir := GetStoreVal("curdir")
+  // if curdir == "" {
+  //   curdir = "."
+  // } else {
+  //   _,err := os.Stat(filepath.Join(datadir, curdir))
+  //   if err == nil {
+  //     go func() {
+  //       anim, err := sprite.LoadSprite(filepath.Join(datadir, curdir))
+  //       loaded <- loadResult{ anim, err } 
+  //     } ()
+  //   } else {
+  //     curdir = "."
+  //   }
+  // }
+  var profile_output *os.File
   then := time.Now()
   for key_map["quit"].FramePressCount() == 0 {
     render.Purge()
+    event_handler.box1 = &box
+    event_handler.box2 = &box_other
     sys.Think()
     now := time.Now()
     dt := (now.Nanosecond() - then.Nanosecond()) / 1000000
@@ -191,60 +286,64 @@ func main() {
         error_msg.SetText(load.err.Error())
         current_anim.SetText("")
       } else {
-        sprite_box.s = load.anim
+        box.sb.s = load.anim
         error_msg.SetText("")
       }
     default:
     }
-    if sprite_box.s != nil {
-      sprite_box.s.Think(int64(float64(dt) * float64(speed) / 100))
-      current_anim.SetText(fmt.Sprintf("%d: %s", sprite_box.s.Facing(), sprite_box.s.Anim()))
-      current_state.SetText(sprite_box.s.AnimState())
+    if box1.sb.s != nil {
+      box1.sb.s.Think(int64(float64(dt) * float64(speed) / 100))
     }
+    if box2.sb.s != nil {
+      box2.sb.s.Think(int64(float64(dt) * float64(speed) / 100))
+    }
+    // if box.sb.s != nil {
+    //   box.sb.s.Think()
+    //   current_anim.SetText(fmt.Sprintf("%d: %s", box.sb.s.Facing(), box.sb.s.Anim()))
+    //   current_state.SetText(box.sb.s.AnimState())
+    // }
     render.Queue(func() {
       gl.ClearColor(1, 0, 0, 1)
       gl.Clear(gl.COLOR_BUFFER_BIT)
       ui.Draw()
-      gl.Color4d(1,0,0,1)
-      for i := 0; i < 100; i++ {
-        gui.GetDict("standard").RenderString("Ty, Tr !!!!", 10,100,400,200,0)
-      }
       sys.SwapBuffers()
     })
 
-    if sprite_box.s != nil {
-      if action_map["reset"].FramePressCount() > 0 {
-        go func() {
-          anim, err := sprite.LoadSprite(curdir)
-          loaded <- loadResult{ anim, err } 
-        } ()
-      } else {
-        for k,v := range action_map {
-          for i := 0; i < v.FramePressCount(); i++ {
-            sprite_box.s.Command(k)
+    if box.sb.s != nil {
+      if key_map["reset"].FramePressCount() > 0 {
+        box.load(box.dir)
+      }
+    }
+
+    if key_map["profile"].FramePressCount() > 0 {
+      if profile_output == nil {
+        var err error
+        profile_output, err = os.Create(filepath.Join(datadir, "cpu.prof"))
+        if err == nil {
+          err = pprof.StartCPUProfile(profile_output)
+          if err != nil {
+            fmt.Printf("Unable to start CPU profile: %v\n", err)
+            profile_output.Close()
+            profile_output = nil
           }
+          fmt.Printf("profout: %v\n", profile_output)
+        } else {
+          fmt.Printf("Unable to open CPU profile: %v\n", err)
         }
+      } else {
+        pprof.StopCPUProfile()
+        profile_output.Close()
+        profile_output = nil
       }
     }
 
     if key_map["load"].FramePressCount() > 0 && chooser == nil {
-      anch := gui.MakeAnchorBox(gui.Dims{ wdx, wdy })
-      fmt.Printf("Making filechooser with %s\n", curdir)
-      file_chooser := gui.MakeFileChooser(filepath.Join(datadir, curdir),
+      anch := gui.MakeAnchorBox(gui.Dims{wdx, wdy})
+      file_chooser := gui.MakeFileChooser(filepath.Join(datadir, box.dir),
         func(path string, err error) {
           if err == nil && len(path) > 0 {
-            curpath,_ := filepath.Split(path)
-            go func() {
-              anim, err := sprite.LoadSprite(curpath)
-              if err == nil {
-                rel,err := filepath.Rel(datadir, curpath)
-                if err == nil {
-                  curdir = rel
-                  SetStoreVal("curdir", curdir)
-                }
-              }
-              loaded <- loadResult{ anim, err } 
-            } ()
+            curpath, _ := filepath.Split(path)
+            box.load(curpath)
           }
           ui.RemoveChild(chooser)
           chooser = nil
@@ -252,11 +351,10 @@ func main() {
         func(path string, is_dir bool) bool {
           return true
         })
-      anch.AddChild(file_chooser, gui.Anchor{ 0.5, 0.5, 0.5, 0.5 })
+      anch.AddChild(file_chooser, gui.Anchor{0.5, 0.5, 0.5, 0.5})
       chooser = anch
       ui.AddChild(chooser)
     }
-
     delta := key_map["speed up"].FramePressAmt() - key_map["slow down"].FramePressAmt()
     if delta != 0 {
       speed += int(delta)
@@ -267,6 +365,19 @@ func main() {
         speed = 100
       }
       speed_text.SetText(fmt.Sprintf("Speed: %d%%", speed))
+    }
+
+    if key_map["select1"].FramePressCount() > 0 {
+      box2.sb.r, box2.sb.g, box2.sb.b = 0.2, 0.1, 0.4
+      box1.sb.r, box1.sb.g, box1.sb.b = 0.4, 0.2, 0.8
+      box = box1
+      box_other = box2
+    }
+    if key_map["select2"].FramePressCount() > 0 {
+      box2.sb.r, box2.sb.g, box2.sb.b = 0.4, 0.2, 0.8
+      box1.sb.r, box1.sb.g, box1.sb.b = 0.2, 0.1, 0.4
+      box = box2
+      box_other = box1
     }
   }
 }

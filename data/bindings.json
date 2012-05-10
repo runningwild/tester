@@ -1,6 +1,9 @@
 {
+  "reset"     : "gui+r",
   "load"      : "gui+l",
   "quit"      : "gui+q",
   "slow down" : "Down",
-  "speed up"  : "Up"
+  "speed up"  : "Up",
+  "select1"   : "1",
+  "select2"   : "2"
 }
