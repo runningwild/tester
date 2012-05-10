@@ -12,7 +12,7 @@
     "Sync": "hit"
   },
   "Ranged/Kill": {
-    "Cmd": "shift+alt+r",
+    "Cmd": "alt+r",
     "Me": ["ranged"],
     "You": ["defend", "killed"],
     "Sync": "hit"

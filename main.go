@@ -13,7 +13,7 @@ import (
   "os"
   "path/filepath"
   "runtime"
-  "runtime/pprof"
+  // "runtime/pprof"
   "sort"
   "time"
 )
@@ -86,6 +86,7 @@ type spriteBox struct {
   gui.Childless
   s       *sprite.Sprite
   r, g, b float64
+  top     bool
 }
 
 func makeSpriteBox(s *sprite.Sprite) *spriteBox {
@@ -102,10 +103,10 @@ func (sb *spriteBox) Draw(region gui.Region) {
   gl.Disable(gl.TEXTURE_2D)
   gl.Color4d(sb.r, sb.g, sb.b, 1)
   gl.Begin(gl.QUADS)
-  gl.Vertex2i(region.X, region.Y)
-  gl.Vertex2i(region.X, region.Y+region.Dy)
-  gl.Vertex2i(region.X+region.Dx, region.Y+region.Dy)
-  gl.Vertex2i(region.X+region.Dx, region.Y)
+  gl.Vertex2i(region.X+region.Dx/3, region.Y)
+  gl.Vertex2i(region.X+region.Dx/3, region.Y+region.Dy)
+  gl.Vertex2i(region.X+region.Dx/3*2, region.Y+region.Dy)
+  gl.Vertex2i(region.X+region.Dx/3*2, region.Y)
   gl.End()
   if sb.s != nil {
     gl.Enable(gl.TEXTURE_2D)
@@ -128,7 +129,11 @@ func (sb *spriteBox) Draw(region gui.Region) {
     gl.End()
     gl.Color4d(1, 1, 1, 1)
     text := fmt.Sprintf("%d : %s : %s", sb.s.Facing(), sb.s.Anim(), sb.s.AnimState())
-    dict.RenderString(text, float64(region.X), float64(region.Y), 0, dict.MaxHeight(), gui.Left)
+    if sb.top {
+      dict.RenderString(text, float64(region.X), float64(region.Y+region.Dy)-dict.MaxHeight(), 0, dict.MaxHeight(), gui.Left)
+    } else {
+      dict.RenderString(text, float64(region.X), float64(region.Y), 0, dict.MaxHeight(), gui.Left)
+    }
   }
 }
 
@@ -221,7 +226,7 @@ func main() {
   sort.Strings(actions)
   for _, action := range actions {
     actions_list.AddChild(gui.MakeTextLine("standard", action, 150, 1, 1, 1, 1))
-    keyname_list.AddChild(gui.MakeTextLine("standard", action_map[action].Name(), 50, 1, 1, 1, 1))
+    keyname_list.AddChild(gui.MakeTextLine("standard", commands[action].Cmd, 100, 1, 1, 1, 1))
   }
 
   current_anim := gui.MakeTextLine("standard", "", 300, 1, 1, 1, 1)
@@ -239,14 +244,15 @@ func main() {
 
   box1.name = "box1"
   box1.sb = makeSpriteBox(nil)
-  anchor.AddChild(box1.sb, gui.Anchor{0.5, 0.5, 0.15, 0.5})
+  anchor.AddChild(box1.sb, gui.Anchor{0.5, 0.5, 0.25, 0.5})
   box1.load(GetStoreVal("box1"))
   box := box1
 
   box2.name = "box2"
   box2.sb = makeSpriteBox(nil)
-  anchor.AddChild(box2.sb, gui.Anchor{0.5, 0.5, 0.5, 0.5})
+  anchor.AddChild(box2.sb, gui.Anchor{0.5, 0.5, 0.45, 0.5})
   box2.load(GetStoreVal("box2"))
+  box2.sb.top = true
   box_other := box2
 
   box2.sb.r, box2.sb.g, box2.sb.b = 0.2, 0.1, 0.4
@@ -270,7 +276,7 @@ func main() {
   //     curdir = "."
   //   }
   // }
-  var profile_output *os.File
+  // var profile_output *os.File
   then := time.Now()
   for key_map["quit"].FramePressCount() == 0 {
     render.Purge()
@@ -312,30 +318,31 @@ func main() {
     if box.sb.s != nil {
       if key_map["reset"].FramePressCount() > 0 {
         box.load(box.dir)
+        box_other.load(box_other.dir)
       }
     }
 
-    if key_map["profile"].FramePressCount() > 0 {
-      if profile_output == nil {
-        var err error
-        profile_output, err = os.Create(filepath.Join(datadir, "cpu.prof"))
-        if err == nil {
-          err = pprof.StartCPUProfile(profile_output)
-          if err != nil {
-            fmt.Printf("Unable to start CPU profile: %v\n", err)
-            profile_output.Close()
-            profile_output = nil
-          }
-          fmt.Printf("profout: %v\n", profile_output)
-        } else {
-          fmt.Printf("Unable to open CPU profile: %v\n", err)
-        }
-      } else {
-        pprof.StopCPUProfile()
-        profile_output.Close()
-        profile_output = nil
-      }
-    }
+    // if key_map["profile"].FramePressCount() > 0 {
+    //   if profile_output == nil {
+    //     var err error
+    //     profile_output, err = os.Create(filepath.Join(datadir, "cpu.prof"))
+    //     if err == nil {
+    //       err = pprof.StartCPUProfile(profile_output)
+    //       if err != nil {
+    //         fmt.Printf("Unable to start CPU profile: %v\n", err)
+    //         profile_output.Close()
+    //         profile_output = nil
+    //       }
+    //       fmt.Printf("profout: %v\n", profile_output)
+    //     } else {
+    //       fmt.Printf("Unable to open CPU profile: %v\n", err)
+    //     }
+    //   } else {
+    //     pprof.StopCPUProfile()
+    //     profile_output.Close()
+    //     profile_output = nil
+    //   }
+    // }
 
     if key_map["load"].FramePressCount() > 0 && chooser == nil {
       anch := gui.MakeAnchorBox(gui.Dims{wdx, wdy})
