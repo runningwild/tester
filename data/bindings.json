@@ -1,7 +1,7 @@
 {
-  "reset"     : "gui+r",
-  "load"      : "gui+l",
-  "quit"      : "gui+q",
+  "reset"     : "os+r",
+  "load"      : "os+l",
+  "quit"      : "os+q",
   "slow down" : "Down",
   "speed up"  : "Up",
   "select1"   : "1",

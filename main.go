@@ -2,14 +2,15 @@ package main
 
 import (
   "fmt"
-  "github.com/chsc/gogl/gl21"
+  gl "github.com/chsc/gogl/gl21"
   "github.com/runningwild/glop/gin"
   "github.com/runningwild/glop/gos"
   "github.com/runningwild/glop/gui"
   "github.com/runningwild/glop/render"
   "github.com/runningwild/glop/sprite"
   "github.com/runningwild/glop/system"
-  "github.com/runningwild/opengl/gl"
+  "code.google.com/p/freetype-go/freetype/truetype"
+  "io/ioutil"
   "os"
   "path/filepath"
   "runtime"
@@ -43,6 +44,7 @@ type Command struct {
 
 func init() {
   runtime.LockOSThread()
+  runtime.GOMAXPROCS(2)
   datadir = filepath.Join(os.Args[0], "..", "..")
   var key_binds KeyBinds
   LoadJson(filepath.Join(datadir, "bindings.json"), &key_binds)
@@ -103,10 +105,10 @@ func (sb *spriteBox) Draw(region gui.Region) {
   gl.Disable(gl.TEXTURE_2D)
   gl.Color4d(sb.r, sb.g, sb.b, 1)
   gl.Begin(gl.QUADS)
-  gl.Vertex2i(region.X+region.Dx/3, region.Y)
-  gl.Vertex2i(region.X+region.Dx/3, region.Y+region.Dy)
-  gl.Vertex2i(region.X+region.Dx/3*2, region.Y+region.Dy)
-  gl.Vertex2i(region.X+region.Dx/3*2, region.Y)
+  gl.Vertex2i(int32(region.X+region.Dx/3), int32(region.Y))
+  gl.Vertex2i(int32(region.X+region.Dx/3), int32(region.Y+region.Dy))
+  gl.Vertex2i(int32(region.X+region.Dx/3*2), int32(region.Y+region.Dy))
+  gl.Vertex2i(int32(region.X+region.Dx/3*2), int32(region.Y))
   gl.End()
   if sb.s != nil {
     gl.Enable(gl.TEXTURE_2D)
@@ -116,8 +118,8 @@ func (sb *spriteBox) Draw(region gui.Region) {
     gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
     gl.Color4f(1, 1, 1, 1)
     gl.Begin(gl.QUADS)
-    x := region.X + region.Dx/2
-    y := region.Y + region.Dy/2
+    x := int32(region.X + region.Dx/2)
+    y := int32(region.Y + region.Dy/2)
     gl.TexCoord2d(tx, -ty)
     gl.Vertex2i(x-50, y-75)
     gl.TexCoord2d(tx, -ty2)
@@ -186,24 +188,28 @@ func (h *handler) HandleEventGroup(group gin.EventGroup) {
       }
     }
   }
-  for i := range group.Events {
-    fmt.Printf("%v ", group.Events[i])
-  }
-  fmt.Printf("\n")
 }
 func (h *handler) Think(int64) {}
 
-func main() {
-  err := gl21.Init()
+func loadFont() (*truetype.Font, error) {
+  f, err := os.Open(filepath.Join(datadir, "fonts", "luxisr.ttf"))
   if err != nil {
-    f, err2 := os.Create(filepath.Join(datadir, "gl_log.txt"))
-    if err2 != nil {
-      fmt.Printf("Unable to write log to a file:%v\n%v\v", err, err2)
-    } else {
-      fmt.Fprintf(f, "%v\n", err)
-      f.Close()
-    }
+    return nil, err
   }
+  data, err := ioutil.ReadAll(f)
+  f.Close()
+  if err != nil {
+    return nil, err
+  }
+  font, err := truetype.Parse(data)
+  if err != nil {
+    return nil, err
+  }
+  return font, nil
+}
+
+
+func main() {
   sys = system.Make(gos.GetSystemInterface())
   sys.Startup()
   wdx := 1000
@@ -213,8 +219,22 @@ func main() {
   render.Queue(func() {
     sys.CreateWindow(50, 150, wdx, wdy)
     sys.EnableVSync(true)
+    err := gl.Init()
+    if err != nil {
+      f, err2 := os.Create(filepath.Join(datadir, "gl_log.txt"))
+      if err2 != nil {
+        fmt.Printf("Unable to write log to a file:%v\n%v\v", err, err2)
+      } else {
+        fmt.Fprintf(f, "%v\n", err)
+        f.Close()
+      }
+    }
     ui, _ = gui.Make(gin.In(), gui.Dims{wdx, wdy}, filepath.Join(datadir, "fonts", "luxisr.ttf"))
-    dict = gui.GetDict("standard")
+    font, err := loadFont()
+    if err != nil {
+      panic(err.Error())
+    }
+    dict = gui.MakeDictionary(font, 15)
   })
   render.Purge()
 
@@ -287,14 +307,27 @@ func main() {
   // }
   // var profile_output *os.File
   then := time.Now()
+  sys.Think()
   for key_map["quit"].FramePressCount() == 0 {
-    render.Purge()
     event_handler.box1 = &box
     event_handler.box2 = &box_other
-    sys.Think()
     now := time.Now()
     dt := (now.Nanosecond() - then.Nanosecond()) / 1000000
     then = now
+    render.Queue(func() {
+      sys.Think()
+    if box1.sb.s != nil {
+      box1.sb.s.Think(int64(float64(dt) * float64(speed) / 100))
+    }
+    if box2.sb.s != nil {
+      box2.sb.s.Think(int64(float64(dt) * float64(speed) / 100))
+    }
+      gl.ClearColor(1, 0, 0, 1)
+      gl.Clear(gl.COLOR_BUFFER_BIT)
+      ui.Draw()
+      sys.SwapBuffers()
+    })
+    render.Purge()
     select {
     case load := <-loaded:
       if load.err != nil {
@@ -306,23 +339,11 @@ func main() {
       }
     default:
     }
-    if box1.sb.s != nil {
-      box1.sb.s.Think(int64(float64(dt) * float64(speed) / 100))
-    }
-    if box2.sb.s != nil {
-      box2.sb.s.Think(int64(float64(dt) * float64(speed) / 100))
-    }
     // if box.sb.s != nil {
     //   box.sb.s.Think()
     //   current_anim.SetText(fmt.Sprintf("%d: %s", box.sb.s.Facing(), box.sb.s.Anim()))
     //   current_state.SetText(box.sb.s.AnimState())
     // }
-    render.Queue(func() {
-      gl.ClearColor(1, 0, 0, 1)
-      gl.Clear(gl.COLOR_BUFFER_BIT)
-      ui.Draw()
-      sys.SwapBuffers()
-    })
 
     if box.sb.s != nil {
       if key_map["reset"].FramePressCount() > 0 {

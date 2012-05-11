@@ -1,0 +1,7 @@
+go build .
+
+rm -rf tester_app
+mkdir -p tester_app/openme
+mv tester.exe tester_app/openme/
+cp -r data/* tester_app/
+cp lib/windows/* tester_app/openme
